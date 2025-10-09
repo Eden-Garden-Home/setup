@@ -1,5 +1,3 @@
-<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
-
 # Proxmox + Docker Compose Server Architecture Setup
 
 This guide describes step-by-step how to deploy a secure and segmented server infrastructure using Proxmox VE for virtualization and Docker Compose for service orchestration. The deployment includes VMs, containerized services (Traefik, Cloudflared, Authentik, n8n, PostgreSQL), with proper network isolation and configuration.
