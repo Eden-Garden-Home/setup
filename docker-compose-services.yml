@@ -1,0 +1,100 @@
+
+version: '3.8'
+
+networks:
+  traefik-public:
+    external: true
+  services-internal:
+    external: true
+  database-internal:
+    external: true
+
+services:
+  # n8n
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    networks:
+      - services-internal
+      - database-internal
+      - traefik-public
+    environment:
+      - N8N_HOST=${DOMAIN}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://webhooks.${DOMAIN}
+      - GENERIC_TIMEZONE=${TIMEZONE}
+      - N8N_USER_MANAGEMENT_DISABLED=false
+      - N8N_SECURE_COOKIE=true
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+
+      # Database
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgresql
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD}
+    volumes:
+      - n8n-data:/home/node/.n8n
+    depends_on:
+      - postgresql
+    labels:
+      # Main n8n interface (via Tailscale + Authentik)
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`n8n.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      - "traefik.http.routers.n8n.tls.certresolver=tailscale"
+      - "traefik.http.routers.n8n.middlewares=authentik@docker"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+
+      # Webhooks (via Cloudflare tunnel, no auth)
+      - "traefik.http.routers.n8n-webhooks.rule=Host(`webhooks.${DOMAIN}`)"
+      - "traefik.http.routers.n8n-webhooks.entrypoints=websecure"
+      - "traefik.http.routers.n8n-webhooks.tls.certresolver=cloudflare"
+      - "traefik.http.services.n8n-webhooks.loadbalancer.server.port=5678"
+
+  # 1Password Connect
+  onepassword-connect:
+    image: 1password/connect-api:latest
+    container_name: onepassword-connect
+    restart: unless-stopped
+    networks:
+      - services-internal
+      - traefik-public
+    environment:
+      - OP_BUS_PORT=11220
+      - OP_BUS_PEERS=onepassword-sync:11221
+      - OP_HTTP_PORT=8080
+      - OP_SESSION=${OP_SESSION}
+    volumes:
+      - onepassword-data:/home/opuser/.op/data
+    depends_on:
+      - onepassword-sync
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.onepassword.rule=Host(`1password.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.onepassword.entrypoints=websecure"
+      - "traefik.http.routers.onepassword.tls.certresolver=tailscale"
+      - "traefik.http.routers.onepassword.middlewares=authentik@docker"
+      - "traefik.http.services.onepassword.loadbalancer.server.port=8080"
+
+  # 1Password Sync
+  onepassword-sync:
+    image: 1password/connect-sync:latest
+    container_name: onepassword-sync
+    restart: unless-stopped
+    networks:
+      - services-internal
+    environment:
+      - OP_HTTP_PORT=8081
+      - OP_BUS_PORT=11221
+      - OP_BUS_PEERS=onepassword-connect:11220
+      - OP_SESSION=${OP_SESSION}
+    volumes:
+      - onepassword-data:/home/opuser/.op/data
+
+volumes:
+  n8n-data:
+  onepassword-data:
