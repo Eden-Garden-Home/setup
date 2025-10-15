@@ -1,6 +1,3 @@
-
-version: '3.8'
-
 networks:
   traefik-public:
     external: true
@@ -12,6 +9,7 @@ networks:
     external: true
 
 services:
+  # Traefik - Reverse Proxy
   traefik:
     image: traefik:v3.2
     container_name: traefik
@@ -32,7 +30,7 @@ services:
       - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - tailscale-sock:/var/run/tailscale:ro  # Modificato: volume condiviso
+      - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock:ro
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik/dynamic:/etc/traefik/dynamic:ro
       - traefik-certs:/certs
@@ -42,7 +40,6 @@ services:
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=tailscale"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      - "traefik.http.routers.traefik-dashboard.middlewares=authentik@docker"
 
   # Tailscale
   tailscale:
@@ -50,7 +47,7 @@ services:
     container_name: tailscale
     hostname: ${TAILSCALE_HOSTNAME}
     restart: unless-stopped
-    network_mode: "host"  # ← Usa network dell'host
+    network_mode: "host"
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
@@ -70,9 +67,9 @@ services:
     restart: unless-stopped
     networks:
       - traefik-public
+    command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
-    command: tunnel --no-autoupdate run
 
   # PostgreSQL Database
   postgresql:
@@ -119,9 +116,9 @@ services:
       - authentik-internal
       - database-internal
       - traefik-public
-    command: server
     ports:
-       - "9000:9000"
+      - "9000:9000"
+    command: server
     environment:
       AUTHENTIK_REDIS__HOST: redis
       AUTHENTIK_POSTGRESQL__HOST: postgresql
@@ -137,14 +134,11 @@ services:
       - postgresql
       - redis
     labels:
-      # Authentik via Tailscale
       - "traefik.enable=true"
       - "traefik.http.routers.authentik.rule=Host(`auth.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls.certresolver=tailscale"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
-
-      # Forward Auth Middleware
       - "traefik.http.middlewares.authentik.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
       - "traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true"
       - "traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
@@ -176,7 +170,6 @@ services:
 volumes:
   traefik-certs:
   tailscale-state:
-  tailscale-sock:
   postgresql-data:
   redis-data:
   authentik-media:
