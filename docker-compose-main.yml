@@ -122,6 +122,8 @@ services:
       - database-internal
       - traefik-public
     command: server
+    ports:
+       - "9000:9000"
     environment:
       AUTHENTIK_REDIS__HOST: redis
       AUTHENTIK_POSTGRESQL__HOST: postgresql
