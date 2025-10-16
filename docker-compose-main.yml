@@ -7,6 +7,8 @@ networks:
     external: true
   database-internal:
     external: true
+  tailscale-internal:
+    external: false
 
 services:
   # Traefik - Reverse Proxy
@@ -48,6 +50,8 @@ services:
     hostname: ${TAILSCALE_HOSTNAME}
     restart: unless-stopped
     network_mode: "host"
+    networks:
+      - tailscale-internal
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
@@ -116,6 +120,7 @@ services:
       - authentik-internal
       - database-internal
       - traefik-public
+      - tailscale-internal
     ports:
       - "9000:9000"
     command: server
@@ -151,6 +156,7 @@ services:
     networks:
       - authentik-internal
       - database-internal
+      - tailscale-internal
     command: worker
     environment:
       AUTHENTIK_REDIS__HOST: redis
