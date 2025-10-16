@@ -1,22 +1,28 @@
 #!/bin/bash
 echo "🧹 Pulizia completa dell'ambiente..."
 
-# Ferma e rimuovi tutti i container del progetto
-docker compose -f docker-compose-main.yml down -v 2>/dev/null || true
+# Ferma TUTTI i container Docker in esecuzione
+echo "🛑 Fermata tutti i container..."
+docker stop $(docker ps -q) 2>/dev/null || true
 
-# Rimuovi tutti i volumi del progetto
-docker volume rm $(docker volume ls -q | grep setup) 2>/dev/null || true
+# Rimuovi TUTTI i container
+echo "🗑️  Rimozione tutti i container..."
+docker rm $(docker ps -aq) 2>/dev/null || true
 
-# Rimuovi tutte le reti del progetto
-docker network rm $(docker network ls -q | grep setup) 2>/dev/null || true
+# Rimuovi tutti i volumi
+echo "🗑️  Rimozione volumi..."
+docker volume prune -af
 
-# Rimuovi container orfani
-docker container prune -f
+# Rimuovi tutte le reti custom
+echo "🌐 Rimozione reti..."
+docker network prune -f
 
-# Rimuovi volumi orfani
-docker volume prune -f
-
+echo ""
 echo "✅ Pulizia completata!"
 echo ""
-echo "Per iniziare da capo, esegui:"
+echo "🔍 Verifica porte libere:"
+sudo lsof -i :80 2>/dev/null || echo "  ✅ Porta 80 libera"
+sudo lsof -i :443 2>/dev/null || echo "  ✅ Porta 443 libera"
+echo ""
+echo "Per avviare lo stack, esegui:"
 echo "  ./setup.sh"
