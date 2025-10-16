@@ -1,0 +1,205 @@
+networks:
+  traefik-public:
+  authentik-internal:
+  database-internal:
+
+volumes:
+  traefik-certs:
+  tailscale-state:
+  postgresql-data:
+  redis-data:
+  authentik-media:
+  authentik-templates:
+  n8n-data:
+
+services:
+  # ==========================================
+  # TAILSCALE
+  # ==========================================
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    hostname: ${TAILSCALE_HOSTNAME}
+    restart: unless-stopped
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+      - sys_module
+    network_mode: host
+
+  # ==========================================
+  # TRAEFIK
+  # ==========================================
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - traefik-public
+      - authentik-internal
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/traefik.yml:ro
+      - traefik-certs:/certs
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`) && PathPrefix(`/dashboard`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.service=api@internal"
+
+  # ==========================================
+  # POSTGRESQL
+  # ==========================================
+  postgresql:
+    image: postgres:16-alpine
+    container_name: postgresql
+    restart: unless-stopped
+    networks:
+      - database-internal
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_ROOT_PASSWORD}
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # REDIS
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    networks:
+      - authentik-internal
+    command: --save 60 1
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # AUTHENTIK SERVER
+  # ==========================================
+  authentik-server:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-server
+    restart: unless-stopped
+    networks:
+      - authentik-internal
+      - database-internal
+      - traefik-public
+    command: server
+    environment:
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER}
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_DB_NAME}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    volumes:
+      - authentik-media:/media
+      - authentik-templates:/templates
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
+      - "traefik.http.routers.authentik.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.authentik.entrypoints=websecure"
+      - "traefik.http.routers.authentik.tls=true"
+      - "traefik.http.routers.authentik.priority=1"
+      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
+
+  # ==========================================
+  # AUTHENTIK WORKER
+  # ==========================================
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-worker
+    restart: unless-stopped
+    networks:
+      - authentik-internal
+      - database-internal
+    command: worker
+    environment:
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER}
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_DB_NAME}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    volumes:
+      - authentik-media:/media
+      - authentik-templates:/templates
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ==========================================
+  # N8N
+  # ==========================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    networks:
+      - traefik-public
+      - database-internal
+    environment:
+      - N8N_HOST=${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - N8N_PATH=n8n
+      - N8N_EDITOR_BASE_URL=https://${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}/n8n
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgresql
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${N8N_DB_NAME}
+      - DB_POSTGRESDB_USER=${N8N_DB_USER}
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    volumes:
+      - n8n-data:/home/node/.n8n
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
+      - "traefik.http.routers.n8n.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`) && PathPrefix(`/n8n`)"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      - "traefik.http.routers.n8n.tls=true"
+      - "traefik.http.routers.n8n.priority=10"
+      - "traefik.http.routers.n8n.middlewares=authentik-auth@docker"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"

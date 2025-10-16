@@ -1,16 +1,14 @@
-# API e Dashboard
 api:
   dashboard: true
   insecure: false
 
-# Providers
 providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
+    network: edengarden_traefik-public
     watch: true
 
-# Entrypoints
 entryPoints:
   web:
     address: ":80"
@@ -22,16 +20,8 @@ entryPoints:
 
   websecure:
     address: ":443"
+    http:
+      tls: {}
 
-# Certificate Resolvers
-certificatesResolvers:
-  tailscale:
-    tailscale: {}
-
-# Logging
 log:
   level: INFO
-  format: common
-
-accessLog:
-  format: common
