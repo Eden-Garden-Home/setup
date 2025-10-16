@@ -177,11 +177,11 @@ services:
       - traefik-public
       - database-internal
     environment:
-      - N8N_HOST=${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}
+      - N8N_HOST=n8n.${TAILSCALE_DOMAIN}
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
-      - N8N_PATH=n8n
-      - N8N_EDITOR_BASE_URL=https://${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}/n8n
+      - N8N_EDITOR_BASE_URL=https://n8n.${TAILSCALE_DOMAIN}
+      - WEBHOOK_URL=https://n8n.${TAILSCALE_DOMAIN}/
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgresql
       - DB_POSTGRESDB_PORT=5432
@@ -195,11 +195,9 @@ services:
       postgresql:
         condition: service_healthy
     labels:
-    - "traefik.enable=true"
-    - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
-    - "traefik.http.routers.n8n.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`) && PathPrefix(`/n8n`)"
-    - "traefik.http.routers.n8n.entrypoints=websecure"
-    - "traefik.http.routers.n8n.tls=true"
-    - "traefik.http.routers.n8n.priority=10"
-    # - "traefik.http.routers.n8n.middlewares=authentik-auth@docker"
-    - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+      - "traefik.enable=true"
+      - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
+      - "traefik.http.routers.n8n.rule=Host(`n8n.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      - "traefik.http.routers.n8n.tls=true"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
