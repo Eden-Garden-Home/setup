@@ -79,12 +79,10 @@ services:
       - traefik-certs:/certs
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`server-edengarden.${TAILSCALE_DOMAIN}`) && PathPrefix(`/traefik`)"
-      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
-      - "traefik.http.routers.traefik-dashboard.tls.certresolver=tailscale"
-      - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      - "traefik.http.routers.traefik-dashboard.middlewares=strip-traefik@docker"
-      - "traefik.http.middlewares.strip-traefik.stripprefix.prefixes=/traefik"
+      - "traefik.http.routers.dashboard.rule=Host(`server-edengarden.${TAILSCALE_DOMAIN}`) && PathPrefix(`/dashboard`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=tailscale"
+      - "traefik.http.routers.dashboard.service=api@internal"
 
   # ==========================================
   # POSTGRESQL - Database Condiviso
@@ -163,12 +161,12 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
-      # Router per Authentik
+      # Authentik prende ROOT del dominio
       - "traefik.http.routers.authentik.rule=Host(`server-edengarden.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls.certresolver=tailscale"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
-      # Middleware ForwardAuth
+      # Middleware
       - "traefik.http.middlewares.authentik-auth.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
       - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
       - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
@@ -233,7 +231,6 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
-      # Router n8n con path
       - "traefik.http.routers.n8n.rule=Host(`server-edengarden.${TAILSCALE_DOMAIN}`) && PathPrefix(`/n8n`)"
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls.certresolver=tailscale"
