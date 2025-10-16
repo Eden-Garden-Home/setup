@@ -11,6 +11,10 @@ volumes:
   authentik-media:
   authentik-templates:
   n8n-data:
+  pihole-etc:
+    name: ${COMPOSE_PROJECT_NAME}_pihole-etc
+  pihole-dnsmasq:
+    name: ${COMPOSE_PROJECT_NAME}_pihole-dnsmasq
 
 services:
   # ==========================================
@@ -201,3 +205,34 @@ services:
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls=true"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+
+# ==========================================
+  # PI-HOLE - DNS Server
+  # ==========================================
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    hostname: pihole
+    restart: unless-stopped
+    networks:
+      - traefik-public
+    ports:
+      - "53:53/tcp"      # DNS TCP
+      - "53:53/udp"      # DNS UDP
+    environment:
+      TZ: 'Europe/Rome'
+      WEBPASSWORD: 'Ciaociao123!'  # ⭐ Cambia questa password!
+      PIHOLE_DNS_: '1.1.1.1;1.0.0.1'  # Cloudflare upstream
+      DNSMASQ_LISTENING: 'all'
+    volumes:
+      - pihole-etc:/etc/pihole
+      - pihole-dnsmasq:/etc/dnsmasq.d
+      
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.pihole.entrypoints=websecure"
+      - "traefik.http.routers.pihole.tls=true"
+      - "traefik.http.services.pihole.loadbalancer.server.port=80"
+      
