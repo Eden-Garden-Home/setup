@@ -50,8 +50,6 @@ services:
     hostname: ${TAILSCALE_HOSTNAME}
     restart: unless-stopped
     network_mode: "host"
-    networks:
-      - tailscale-internal
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
