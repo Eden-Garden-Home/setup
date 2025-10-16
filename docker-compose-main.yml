@@ -30,17 +30,15 @@ services:
     container_name: tailscale
     hostname: ${TAILSCALE_HOSTNAME}
     restart: unless-stopped
-    networks:
-      - default
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=false
-      - TS_HOSTNAME=${TAILSCALE_HOSTNAME}
+      - TS_SOCKET=/var/run/tailscale/tailscaled.sock
     volumes:
       - tailscale-state:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
-      - /var/run/tailscale:/var/run/tailscale
+      - tailscale-socket:/var/run/tailscale
     cap_add:
       - net_admin
       - sys_module
