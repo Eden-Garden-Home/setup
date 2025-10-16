@@ -1,55 +1,29 @@
+version: '3.8'
+
 networks:
   traefik-public:
-    external: true
   authentik-internal:
-    external: true
   services-internal:
-    external: true
   database-internal:
-    external: true
-  tailscale-internal:
-    external: false
+
+volumes:
+  traefik-certs:
+  tailscale-state:
+  postgresql-data:
+  redis-data:
+  authentik-media:
+  authentik-custom-templates:
+  n8n-data:
 
 services:
-  # Traefik - Reverse Proxy
-  traefik:
-    image: traefik:v3.2
-    container_name: traefik
-    restart: unless-stopped
-    depends_on:
-      - tailscale
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - traefik-public
-      - authentik-internal
-      - services-internal
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"
-    environment:
-      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock:ro
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./traefik/dynamic:/etc/traefik/dynamic:ro
-      - traefik-certs:/certs
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${TAILSCALE_DOMAIN}`)"
-      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
-      - "traefik.http.routers.traefik-dashboard.tls.certresolver=tailscale"
-      - "traefik.http.routers.traefik-dashboard.service=api@internal"
-
-  # Tailscale
+  # ==========================================
+  # TAILSCALE - VPN Network
+  # ==========================================
   tailscale:
     image: tailscale/tailscale:latest
     container_name: tailscale
     hostname: ${TAILSCALE_HOSTNAME}
     restart: unless-stopped
-    network_mode: "host"
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
@@ -62,7 +36,37 @@ services:
       - net_admin
       - sys_module
 
-  # Cloudflared Tunnel
+  # ==========================================
+  # TRAEFIK - Reverse Proxy
+  # ==========================================
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    restart: unless-stopped
+    depends_on:
+      - tailscale
+    network_mode: "service:tailscale"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-certs:/certs
+    labels:
+      - "traefik.enable=true"
+      # Dashboard Traefik (solo Tailscale)
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=tailscale"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.middlewares=authentik@docker"
+
+  # ==========================================
+  # CLOUDFLARED - Solo per webhook n8n
+  # ==========================================
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
@@ -73,7 +77,9 @@ services:
     environment:
       - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
 
-  # PostgreSQL Database
+  # ==========================================
+  # POSTGRESQL - Database
+  # ==========================================
   postgresql:
     image: postgres:16-alpine
     container_name: postgresql
@@ -86,13 +92,16 @@ services:
       - POSTGRES_DB=postgres
     volumes:
       - postgresql-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Redis for Authentik
+  # ==========================================
+  # REDIS - Cache per Authentik
+  # ==========================================
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -109,7 +118,9 @@ services:
       retries: 5
       timeout: 3s
 
-  # Authentik Server
+  # ==========================================
+  # AUTHENTIK SERVER - Identity Provider
+  # ==========================================
   authentik-server:
     image: ghcr.io/goauthentik/server:latest
     container_name: authentik-server
@@ -118,7 +129,6 @@ services:
       - authentik-internal
       - database-internal
       - traefik-public
-      - tailscale-internal
     command: server
     environment:
       AUTHENTIK_REDIS__HOST: redis
@@ -127,7 +137,7 @@ services:
       AUTHENTIK_POSTGRESQL__NAME: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD}
       AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
-      #AUTHENTIK_COOKIE_DOMAIN: ${DOMAIN}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
     volumes:
       - authentik-media:/media
       - authentik-custom-templates:/templates
@@ -136,15 +146,20 @@ services:
       - redis
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      # Authentik UI (solo Tailscale)
       - "traefik.http.routers.authentik.rule=Host(`auth.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls.certresolver=tailscale"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+      # Middleware ForwardAuth
       - "traefik.http.middlewares.authentik.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
       - "traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true"
       - "traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
 
-  # Authentik Worker
+  # ==========================================
+  # AUTHENTIK WORKER
+  # ==========================================
   authentik-worker:
     image: ghcr.io/goauthentik/server:latest
     container_name: authentik-worker
@@ -152,7 +167,6 @@ services:
     networks:
       - authentik-internal
       - database-internal
-      - tailscale-internal
     command: worker
     environment:
       AUTHENTIK_REDIS__HOST: redis
@@ -161,6 +175,7 @@ services:
       AUTHENTIK_POSTGRESQL__NAME: authentik
       AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_DB_PASSWORD}
       AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
     volumes:
       - authentik-media:/media
       - authentik-custom-templates:/templates
@@ -169,10 +184,51 @@ services:
       - postgresql
       - redis
 
-volumes:
-  traefik-certs:
-  tailscale-state:
-  postgresql-data:
-  redis-data:
-  authentik-media:
-  authentik-custom-templates:
+  # ==========================================
+  # N8N - Workflow Automation
+  # ==========================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    networks:
+      - traefik-public
+      - services-internal
+      - database-internal
+    environment:
+      - N8N_HOST=n8n.${TAILSCALE_DOMAIN}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://webhook.${PUBLIC_DOMAIN}
+      - N8N_EDITOR_BASE_URL=https://n8n.${TAILSCALE_DOMAIN}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgresql
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    volumes:
+      - n8n-data:/home/node/.n8n
+    depends_on:
+      - postgresql
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      
+      # UI n8n (solo Tailscale con Authentik)
+      - "traefik.http.routers.n8n-ui.rule=Host(`n8n.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.n8n-ui.entrypoints=websecure"
+      - "traefik.http.routers.n8n-ui.tls.certresolver=tailscale"
+      - "traefik.http.routers.n8n-ui.middlewares=authentik@docker"
+      - "traefik.http.routers.n8n-ui.service=n8n"
+      
+      # Webhook n8n (pubblico via Cloudflare)
+      - "traefik.http.routers.n8n-webhook.rule=Host(`webhook.${PUBLIC_DOMAIN}`)"
+      - "traefik.http.routers.n8n-webhook.entrypoints=websecure"
+      - "traefik.http.routers.n8n-webhook.tls.certresolver=cloudflare"
+      - "traefik.http.routers.n8n-webhook.priority=100"
+      - "traefik.http.routers.n8n-webhook.service=n8n"
+      
+      # Service
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
