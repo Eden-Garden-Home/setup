@@ -121,8 +121,6 @@ services:
       - database-internal
       - traefik-public
       - tailscale-internal
-    ports:
-      - "9000:9000"
     command: server
     environment:
       AUTHENTIK_REDIS__HOST: redis
