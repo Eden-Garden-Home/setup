@@ -202,8 +202,7 @@ services:
       - database-internal
     depends_on:
       - authentik-server
-      - postgresql:
-        - condition: service_healthy
+      - postgresql
     environment:
       - N8N_HOST=n8n.${TAILSCALE_DOMAIN}
       - N8N_PORT=5678
