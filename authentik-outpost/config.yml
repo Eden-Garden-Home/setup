@@ -1,6 +1,6 @@
 log_level: info
 docker_labels: null
-authentik_host: https://server-edengarden-1.zebra-wezen.ts.net/
+authentik_host: https://auth.zebra-wezen.ts.net/
 docker_network: null
 container_image: null
 docker_map_ports: true
