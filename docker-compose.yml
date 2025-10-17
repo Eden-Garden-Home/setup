@@ -241,7 +241,7 @@ services:
 
 
   authentik-outpost:
-    image: ghcr.io/goauthentik/outpost-proxy:latest
+    image: ghcr.io/goauthentik/proxy
     container_name: authentik-outpost
     restart: unless-stopped
     networks:
