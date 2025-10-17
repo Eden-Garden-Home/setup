@@ -133,7 +133,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
-      - "traefik.http.routers.authentik.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.authentik.rule=Host(`auth.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls=true"
       - "traefik.http.routers.authentik.priority=1"
