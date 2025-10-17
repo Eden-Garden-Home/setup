@@ -137,14 +137,14 @@ services:
       - "traefik.http.routers.authentik.rule=Host(`auth.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls=true"
-      - "traefik.http.routers.authentik.priority=100"
+      - "traefik.http.routers.authentik.priority=1"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
 
       # Router Outpost per ForwardAuth (alta priorità)
-      - "traefik.http.routers.authentik-outpost.rule=Host(`auth.${TAILSCALE_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)"
+      - "traefik.http.routers.authentik-outpost.rule=Host(`authentik-server`) && PathPrefix(`/outpost.goauthentik.io/`)"
       - "traefik.http.routers.authentik-outpost.entrypoints=websecure"
       - "traefik.http.routers.authentik-outpost.tls=true"
-      - "traefik.http.routers.authentik-outpost.priority=1"
+      - "traefik.http.routers.authentik-outpost.priority=100"
       - "traefik.http.services.authentik-outpost.loadbalancer.server.port=9000"
 
       # Middleware ForwardAuth da usare negli altri servizi
