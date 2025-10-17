@@ -137,9 +137,10 @@ services:
       - "traefik.http.routers.authentik.tls=true"
       - "traefik.http.routers.authentik.priority=1"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
-      - "traefik.http.middlewares.authentik-auth.forwardauth.address=https://auth.${TAILSCALE_DOMAIN}:9000/outpost.goauthentik.io/auth/traefik"
+
+      - "traefik.http.middlewares.authentik-auth.forwardauth.address=http://outpost.${TAILSCALE_DOMAIN}:9000/outpost.goauthentik.io/auth/traefik"
       - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.authentik.forwardauth.authResponseHeaders: X-authentik-username,X-authentik-groups,X-authentik-entitlements,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-jwt,X-authentik-meta-jwks,X-authentik-meta-outpost,X-authentik-meta-provider,X-authentik-meta-app,X-authentik-meta-version"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
 
   # ==========================================
   # AUTHENTIK WORKER
