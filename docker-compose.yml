@@ -205,8 +205,8 @@ services:
       - "traefik.http.routers.n8n.rule=Host(`n8n.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls=true"
-      - "traefik.http.routers.miaapp.middlewares=authentik-server@docker"
-      #- "traefik.http.services.n8n.loadbalancer.server.port=5678"
+      - "traefik.http.routers.n8n.middlewares=authentik-auth@docker"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
 
 # ==========================================
   # PI-HOLE - DNS Server
