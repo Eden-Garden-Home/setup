@@ -171,6 +171,25 @@ services:
       redis:
         condition: service_healthy
 
+
+  authentik-proxy:
+    image: ghcr.io/goauthentik/proxy
+    container_name: authentik-proxy
+    networks:
+      - traefik-public
+      - authentik-internal
+    depends_on:
+      - authentik-server
+    environment:
+      AUTHENTIK_HOST: "http://auth.${TAILSCALE_DOMAIN}"
+    labels:
+      - "traefik.enable=true"
+      # Router per le richieste /outpost.goauthentik.io
+      - "traefik.http.routers.authoutpost.rule=Host(`auth.${TAILSCALE_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)"
+      - "traefik.http.routers.authoutpost.entrypoints=websecure"
+      - "traefik.http.routers.authoutpost.tls=true"
+      - "traefik.http.services.authoutpost.loadbalancer.server.port=9000"
+
   # ==========================================
   # N8N
   # ==========================================
@@ -199,13 +218,14 @@ services:
     depends_on:
       postgresql:
         condition: service_healthy
+      authentik-proxy:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
       - "traefik.http.routers.n8n.rule=Host(`n8n.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls=true"
-      - "traefik.http.routers.miaapp.middlewares=authentik-auth@docker"
+      - "traefik.http.routers.n8n.middlewares=auth@docker"
       #- "traefik.http.services.n8n.loadbalancer.server.port=5678"
 
 # ==========================================
