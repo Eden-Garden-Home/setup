@@ -1,3 +1,5 @@
+version: "3.9"
+
 networks:
   traefik-public:
   authentik-internal:
@@ -58,10 +60,14 @@ services:
       - traefik-certs:/certs
     labels:
       - "traefik.enable=true"
+      # Dashboard solo su Tailscale
       - "traefik.http.routers.dashboard.rule=Host(`traefik.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=tailscale-allow@docker"
+      # Middleware IPAllowList per Tailscale (100.64.0.0/10)
+      - "traefik.http.middlewares.tailscale-allow.ipallowlist.sourcerange=100.64.0.0/10"
 
   # ==========================================
   # POSTGRESQL
@@ -132,14 +138,23 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
+      # Router principale Authentik su Tailscale
       - "traefik.http.routers.authentik.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls=true"
-      - "traefik.http.routers.authentik.priority=1"
+      - "traefik.http.routers.authentik.priority=10"
+      - "traefik.http.routers.authentik.middlewares=tailscale-allow@docker"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+      # Router per outpost (evita loop di auth)
+      - "traefik.http.routers.authentik-outpost.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)"
+      - "traefik.http.routers.authentik-outpost.entrypoints=websecure"
+      - "traefik.http.routers.authentik-outpost.tls=true"
+      - "traefik.http.routers.authentik-outpost.priority=20"
+      - "traefik.http.routers.authentik-outpost.service=authentik"
+      # Middleware ForwardAuth (riusabile)
       - "traefik.http.middlewares.authentik-auth.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
       - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-jwt,X-authentik-meta-jwks,X-authentik-meta-outpost,X-authentik-meta-provider,X-authentik-meta-app,X-authentik-meta-version"
 
   # ==========================================
   # AUTHENTIK WORKER
@@ -185,7 +200,8 @@ services:
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
       - N8N_EDITOR_BASE_URL=https://n8n.${TAILSCALE_DOMAIN}
-      - WEBHOOK_URL=https://n8n.${TAILSCALE_DOMAIN}/
+      - WEBHOOK_URL=https://${PUBLIC_N8N_HOST}/
+      - N8N_PROXY_HOPS=1
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgresql
       - DB_POSTGRESDB_PORT=5432
@@ -201,12 +217,19 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
-      - "traefik.http.routers.n8n.rule=Host(`n8n.${TAILSCALE_DOMAIN}`)"
-      - "traefik.http.routers.n8n.entrypoints=websecure"
-      - "traefik.http.routers.n8n.tls=true"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+      # UI interna protetta da Authentik + Tailscale
+      - "traefik.http.routers.n8n-ui.rule=Host(`n8n.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.n8n-ui.entrypoints=websecure"
+      - "traefik.http.routers.n8n-ui.tls=true"
+      - "traefik.http.routers.n8n-ui.middlewares=authentik-auth@docker,tailscale-allow@docker"
+      # Webhook pubblici via Cloudflare Tunnel (no auth)
+      - "traefik.http.routers.n8n-hook.rule=Host(`${PUBLIC_N8N_HOST}`) && (PathPrefix(`/webhook`) || PathPrefix(`/webhook-test`) || PathPrefix(`/webhook-waiting`))"
+      - "traefik.http.routers.n8n-hook.entrypoints=websecure"
+      - "traefik.http.routers.n8n-hook.tls=true"
+      - "traefik.http.routers.n8n-hook.priority=20"
 
-# ==========================================
+  # ==========================================
   # PI-HOLE - DNS Server
   # ==========================================
   pihole:
@@ -223,16 +246,42 @@ services:
     environment:
       TZ: 'Europe/Rome'
       WEBPASSWORD: 'Ciaociao123!'
-      PIHOLE_DNS_: '1.1.1.1;1.0.0.1'
+      PIHOLE_DNS_: 'cloudflared-doh#5053'
       DNSMASQ_LISTENING: 'all'
     volumes:
       - pihole-etc:/etc/pihole
       - pihole-dnsmasq:/etc/dnsmasq.d
-
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
       - "traefik.http.routers.pihole.rule=Host(`pihole.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.pihole.entrypoints=websecure"
       - "traefik.http.routers.pihole.tls=true"
+      - "traefik.http.routers.pihole.middlewares=tailscale-allow@docker"
       - "traefik.http.services.pihole.loadbalancer.server.port=80"
+
+  # ==========================================
+  # CLOUDFLARED (DNS-over-HTTPS per Pi-hole)
+  # ==========================================
+  cloudflared-doh:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-doh
+    restart: unless-stopped
+    command: proxy-dns --port 5053 --upstream https://1.1.1.1/dns-query --upstream https://1.0.0.1/dns-query
+    networks:
+      - traefik-public
+
+  # ==========================================
+  # CLOUDFLARED TUNNEL (solo n8n pubblico via Traefik)
+  # ==========================================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    networks:
+      - traefik-public
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+    command: tunnel run
