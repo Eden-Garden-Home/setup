@@ -240,20 +240,4 @@ services:
       - "traefik.http.services.pihole.loadbalancer.server.port=80"
 
 
-  authentik-outpost:
-    image: ghcr.io/goauthentik/proxy
-    container_name: authentik-outpost
-    restart: unless-stopped
-    networks:
-      - traefik-public
-      - authentik-internal
-    volumes:
-      - ./authentik-outpost/config.yml:/config/config.yml:ro
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.outpost.rule=Host(`outpost.${TAILSCALE_DOMAIN}`)"
-      - "traefik.http.routers.outpost.entrypoints=websecure"
-      - "traefik.http.routers.outpost.tls=true"
-      - "traefik.http.services.outpost.loadbalancer.server.port=9000"
-
 
