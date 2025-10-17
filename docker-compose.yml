@@ -19,9 +19,6 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME}_pihole-dnsmasq
 
 services:
-  # ==========================================
-  # TAILSCALE
-  # ==========================================
   tailscale:
     image: tailscale/tailscale:latest
     container_name: tailscale
@@ -39,9 +36,6 @@ services:
       - sys_module
     network_mode: host
 
-  # ==========================================
-  # TRAEFIK
-  # ==========================================
   traefik:
     image: traefik:v3.2
     container_name: traefik
@@ -60,18 +54,17 @@ services:
       - traefik-certs:/certs
     labels:
       - "traefik.enable=true"
-      # Dashboard solo su Tailscale
       - "traefik.http.routers.dashboard.rule=Host(`traefik.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.middlewares=tailscale-allow@docker"
-      # Middleware IPAllowList per Tailscale (100.64.0.0/10)
       - "traefik.http.middlewares.tailscale-allow.ipallowlist.sourcerange=100.64.0.0/10"
+      # middleware ForwardAuth riusabile per tutti i servizi interni
+      - "traefik.http.middlewares.authentik-auth.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-jwt"
 
-  # ==========================================
-  # POSTGRESQL
-  # ==========================================
   postgresql:
     image: postgres:16-alpine
     container_name: postgresql
@@ -89,9 +82,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ==========================================
-  # REDIS
-  # ==========================================
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -107,9 +97,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ==========================================
-  # AUTHENTIK SERVER
-  # ==========================================
   authentik-server:
     image: ghcr.io/goauthentik/server:latest
     container_name: authentik-server
@@ -138,27 +125,20 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
-      # Router principale Authentik su Tailscale
+      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+      # router principale di Authentik, solo su Tailscale
       - "traefik.http.routers.authentik.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls=true"
-      - "traefik.http.routers.authentik.priority=10"
       - "traefik.http.routers.authentik.middlewares=tailscale-allow@docker"
-      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
-      # Router per outpost (evita loop di auth)
+      - "traefik.http.routers.authentik.priority=10"
+      # router per l'outpost (non filtrato da ForwardAuth)
       - "traefik.http.routers.authentik-outpost.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)"
       - "traefik.http.routers.authentik-outpost.entrypoints=websecure"
       - "traefik.http.routers.authentik-outpost.tls=true"
       - "traefik.http.routers.authentik-outpost.priority=20"
       - "traefik.http.routers.authentik-outpost.service=authentik"
-      # Middleware ForwardAuth (riusabile)
-      - "traefik.http.middlewares.authentik-auth.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
-      - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid,X-authentik-jwt,X-authentik-meta-jwks,X-authentik-meta-outpost,X-authentik-meta-provider,X-authentik-meta-app,X-authentik-meta-version"
 
-  # ==========================================
-  # AUTHENTIK WORKER
-  # ==========================================
   authentik-worker:
     image: ghcr.io/goauthentik/server:latest
     container_name: authentik-worker
@@ -185,9 +165,6 @@ services:
       redis:
         condition: service_healthy
 
-  # ==========================================
-  # N8N
-  # ==========================================
   n8n:
     image: n8nio/n8n:latest
     container_name: n8n
@@ -229,9 +206,6 @@ services:
       - "traefik.http.routers.n8n-hook.tls=true"
       - "traefik.http.routers.n8n-hook.priority=20"
 
-  # ==========================================
-  # PI-HOLE - DNS Server
-  # ==========================================
   pihole:
     image: pihole/pihole:latest
     container_name: pihole
@@ -260,9 +234,6 @@ services:
       - "traefik.http.routers.pihole.middlewares=tailscale-allow@docker"
       - "traefik.http.services.pihole.loadbalancer.server.port=80"
 
-  # ==========================================
-  # CLOUDFLARED (DNS-over-HTTPS per Pi-hole)
-  # ==========================================
   cloudflared-doh:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared-doh
@@ -271,9 +242,6 @@ services:
     networks:
       - traefik-public
 
-  # ==========================================
-  # CLOUDFLARED TUNNEL (solo n8n pubblico via Traefik)
-  # ==========================================
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
