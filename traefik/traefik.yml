@@ -24,4 +24,4 @@ entryPoints:
       tls: {}
 
 log:
-  level: INFO
+  level: DEBUG
