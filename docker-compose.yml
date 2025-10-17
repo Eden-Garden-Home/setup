@@ -138,7 +138,7 @@ services:
       - "traefik.http.routers.authentik.priority=1"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
 
-      - "traefik.http.middlewares.authentik-auth.forwardauth.address=https://authentik-server:9000/outpost.goauthentik.io/auth/traefik/"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik/"
       - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
       - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-email,X-authentik-name,X-authentik-groups"
 
