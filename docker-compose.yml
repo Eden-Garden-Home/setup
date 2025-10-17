@@ -202,6 +202,8 @@ services:
       - database-internal
     depends_on:
       - authentik-server
+      - postgresql:
+        - condition: service_healthy
     environment:
       - N8N_HOST=n8n.${TAILSCALE_DOMAIN}
       - N8N_PORT=5678
@@ -217,9 +219,6 @@ services:
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
     volumes:
       - n8n-data:/home/node/.n8n
-    depends_on:
-      postgresql:
-        condition: service_healthy
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
