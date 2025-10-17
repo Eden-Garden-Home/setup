@@ -200,6 +200,8 @@ services:
     networks:
       - traefik-public
       - database-internal
+    depends_on:
+      - authentik-server
     environment:
       - N8N_HOST=n8n.${TAILSCALE_DOMAIN}
       - N8N_PORT=5678
@@ -218,7 +220,6 @@ services:
     depends_on:
       postgresql:
         condition: service_healthy
-      authentik-proxy:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
