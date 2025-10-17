@@ -12,7 +12,9 @@ volumes:
   authentik-templates:
   n8n-data:
   pihole-etc:
+    name: ${COMPOSE_PROJECT_NAME}_pihole-etc
   pihole-dnsmasq:
+    name: ${COMPOSE_PROJECT_NAME}_pihole-dnsmasq
 
 services:
   # ==========================================
@@ -46,6 +48,7 @@ services:
       - no-new-privileges:true
     networks:
       - traefik-public
+      - authentik-internal
     ports:
       - "80:80"
       - "443:443"
@@ -58,7 +61,6 @@ services:
       - "traefik.http.routers.dashboard.rule=Host(`traefik.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls=true"
-      - "traefik.http.routers.dashboard.middlewares=authentik@docker"
       - "traefik.http.routers.dashboard.service=api@internal"
 
   # ==========================================
@@ -130,25 +132,14 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
-      
-      # Router principale UI Authentik
-      - "traefik.http.routers.authentik.rule=Host(`auth.${TAILSCALE_DOMAIN}`)"
+      - "traefik.http.routers.authentik.rule=Host(`${TAILSCALE_HOSTNAME}.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls=true"
-      - "traefik.http.routers.authentik.priority=100"
+      - "traefik.http.routers.authentik.priority=1"
       - "traefik.http.services.authentik.loadbalancer.server.port=9000"
-      
-      # Router per Outpost endpoint (bassa priorità)
-      - "traefik.http.routers.authentik-outpost.rule=Host(`auth.${TAILSCALE_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)"
-      - "traefik.http.routers.authentik-outpost.entrypoints=websecure"
-      - "traefik.http.routers.authentik-outpost.tls=true"
-      - "traefik.http.routers.authentik-outpost.priority=10"
-      - "traefik.http.services.authentik-outpost.loadbalancer.server.port=9000"
-      
-      # Middleware Forward Auth
-      - "traefik.http.middlewares.authentik.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
-      - "traefik.http.middlewares.authentik.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.authentik.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-name,X-authentik-uid"
 
   # ==========================================
   # AUTHENTIK WORKER
@@ -213,11 +204,10 @@ services:
       - "traefik.http.routers.n8n.rule=Host(`n8n.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls=true"
-      - "traefik.http.routers.n8n.middlewares=authentik@docker"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
 
-  # ==========================================
-  # PI-HOLE
+# ==========================================
+  # PI-HOLE - DNS Server
   # ==========================================
   pihole:
     image: pihole/pihole:latest
@@ -229,6 +219,7 @@ services:
     ports:
       - "53:53/tcp"
       - "53:53/udp"
+      - "8081:443/tcp"
     environment:
       TZ: 'Europe/Rome'
       WEBPASSWORD: 'Ciaociao123!'
@@ -237,11 +228,11 @@ services:
     volumes:
       - pihole-etc:/etc/pihole
       - pihole-dnsmasq:/etc/dnsmasq.d
+
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
       - "traefik.http.routers.pihole.rule=Host(`pihole.${TAILSCALE_DOMAIN}`)"
       - "traefik.http.routers.pihole.entrypoints=websecure"
       - "traefik.http.routers.pihole.tls=true"
-      - "traefik.http.routers.pihole.middlewares=authentik@docker"
       - "traefik.http.services.pihole.loadbalancer.server.port=80"
