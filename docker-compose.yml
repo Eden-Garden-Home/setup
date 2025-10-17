@@ -130,21 +130,28 @@ services:
       redis:
         condition: service_healthy
     labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
-      - "traefik.http.routers.authentik.rule=Host(`auth.${TAILSCALE_DOMAIN}`)"
-      - "traefik.http.routers.authentik.entrypoints=websecure"
-      - "traefik.http.routers.authentik.tls=true"
-      - "traefik.http.routers.authentik.priority=1"
-      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
-      - "traefik.http.routers.authentik-outpost.rule=Host(`auth.${TAILSCALE_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)"
-      - "traefik.http.routers.authentik-outpost.entrypoints=websecure"
-      - "traefik.http.routers.authentik-outpost.tls=true"
-      - "traefik.http.routers.authentik-outpost.priority=100"
-      - "traefik.http.services.authentik-outpost.loadbalancer.server.port=9000"
-      - "traefik.http.middlewares.authentik-auth.forwardauth.address=https://auth.${TAILSCALE_DOMAIN:9000/outpost.goauthentik.io/auth/traefik/"
-      - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-email,X-authentik-name,X-authentik-groups"
+        - "traefik.enable=true"
+        - "traefik.docker.network=${COMPOSE_PROJECT_NAME}_traefik-public"
+
+        # Router per l'interfaccia Authentik
+        - "traefik.http.routers.authentik.rule=Host(`auth.${TAILSCALE_DOMAIN}`)"
+        - "traefik.http.routers.authentik.entrypoints=websecure"
+        - "traefik.http.routers.authentik.tls=true"
+        - "traefik.http.routers.authentik.priority=1"
+        - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+
+        # Router per l'endpoint Outpost
+        - "traefik.http.routers.authentik-outpost.rule=Host(`auth.${TAILSCALE_DOMAIN}`) && PathPrefix(`/outpost.goauthentik.io/`)"
+        - "traefik.http.routers.authentik-outpost.entrypoints=websecure"
+        - "traefik.http.routers.authentik-outpost.tls=true"
+        - "traefik.http.routers.authentik-outpost.priority=100"
+        - "traefik.http.services.authentik-outpost.loadbalancer.server.port=9000"
+
+        # Middleware ForwardAuth
+        - "traefik.http.middlewares.authentik-auth.forwardauth.address=https://auth.zebra-wezen.ts.net:9000/outpost.goauthentik.io/auth/traefik/"
+        - "traefik.http.middlewares.authentik-auth.forwardauth.trustForwardHeader=true"
+        - "traefik.http.middlewares.authentik-auth.forwardauth.authResponseHeaders=X-authentik-username,X-authentik-email,X-authentik-name,X-authentik-groups"
+
 
   # ==========================================
   # AUTHENTIK WORKER
